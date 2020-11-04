@@ -1,6 +1,6 @@
 import compiledTemplate from '../templates/card.hbs';
 import FetchService from '../scripts/fetch-service';
-
+const basicLightbox = require('basiclightbox');
 const refs = {
   searchForm: document.querySelector('.js-search-form'),
   loadMoreBtn: document.querySelector('[data-action="load-more"]'),
@@ -73,3 +73,11 @@ function getCoords(elem) {
     top: box.top + pageYOffset,
   };
 }
+//--
+refs.ul.addEventListener('click', e => {
+  if (!e.target.hasAttribute('data-img')) return;
+  const instance = basicLightbox.create(`
+    <img src="${e.target.dataset.img}" width="800" height="600">
+`);
+  instance.show();
+});

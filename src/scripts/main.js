@@ -1,83 +1,100 @@
 import compiledTemplate from '../templates/card.hbs';
 import FetchService from '../scripts/fetch-service';
 const basicLightbox = require('basiclightbox');
+const { info, defaults } = require('@pnotify/core');
+defaults.delay = 2000;
+
 const refs = {
   searchForm: document.querySelector('.js-search-form'),
-  loadMoreBtn: document.querySelector('[data-action="load-more"]'),
   ul: document.querySelector('.gallery'),
 };
 const fetchService = new FetchService();
 
-refs.searchForm.addEventListener('submit', e => {
+const dataPerRequest = 12;
+
+refs.searchForm.addEventListener('submit', onSubmit);
+refs.ul.addEventListener('click', showLargeImg);
+//--
+function onSubmit(e) {
   e.preventDefault();
   fetchService.pageNumber = 1;
-  fetchService.search = e.currentTarget.elements.query.value;
-  fetchService
-    .run()
-    .then(data => {
-      const string = data.map(compiledTemplate).join('');
+  fetchService.searchQuery = e.currentTarget.elements.query.value;
+  (async () => {
+    try {
+      const data = await fetchService.fetchData();
+      const string = data.hits.map(compiledTemplate).join('');
       refs.ul.innerHTML = string;
-      refs.loadMoreBtn.disabled = false;
       onLoadImgs();
-    })
-    .catch(error => {
-      console.log(error);
-    });
-});
-//--
-refs.loadMoreBtn.addEventListener('click', () => {
-  refs.loadMoreBtn.disabled = true;
-  refs.loadMoreBtn.children[0].classList.remove('is-hidden');
-  fetchService.incrementPage();
-  fetchService
-    .run()
-    .then(data => {
-      const string = data.map(compiledTemplate).join('');
-      refs.ul.insertAdjacentHTML('beforeend', string);
-      refs.loadMoreBtn.children[0].classList.add('is-hidden');
-      refs.loadMoreBtn.disabled = false;
-      //--
-      onLoadImgs();
-    })
-    .catch(error => {
-      console.log(error);
-    });
-});
-//--
-function onLoadImgs() {
-  let imgs = document.querySelectorAll('img');
-  if (!imgs.length) return;
-  let dist = imgs.length - 12;
-  let counter = 0;
-  for (let i = dist; imgs.length > i; i += 1) {
-    imgs[i].addEventListener('load', () => {
-      counter += 1;
-      if (counter == 12) {
-        scrollTo(getCoords(imgs[dist]).top);
+      if (data.totalHits <= dataPerRequest) {
+        info({
+          text: 'All content is loaded',
+        });
       }
-    });
+    } catch (error) {
+      console.log(error);
+    }
+  })();
+}
+
+async function onLoadMore() {
+  try {
+    const data = await fetchService.nextDataDozen();
+    renderElements(data.hits);
+    onLoadImgs();
+    if (fetchService.currentCount >= data.totalHits) {
+      info({
+        text: 'All content is loaded',
+      });
+    }
+  } catch (error) {
+    console.log(error);
   }
 }
 
-function scrollTo(pos) {
-  window.scrollTo({
-    top: pos,
-    left: 0,
-    behavior: 'smooth',
-  });
+function onLoadImgs() {
+  let imgs = document.querySelectorAll('img');
+  if (!imgs.length) return;
+  let dist = imgs.length - dataPerRequest;
+  let counter = 0;
+  for (let i = dist >= 0 ? dist : 0; imgs.length > i; i += 1) {
+    imgs[i].addEventListener('load', onStartInresect);
+    imgs[i].addEventListener('error', onStartInresect);
+  }
+  function onStartInresect() {
+    counter += 1;
+    if (counter == dataPerRequest) {
+      onIntersection();
+    }
+  }
 }
 
-function getCoords(elem) {
-  let box = elem.getBoundingClientRect();
-  return {
-    top: box.top + pageYOffset,
-  };
+function renderElements(data) {
+  const string = data.map(compiledTemplate).join('');
+  refs.ul.insertAdjacentHTML('beforeend', string);
 }
-//--
-refs.ul.addEventListener('click', e => {
+
+function showLargeImg(e) {
   if (!e.target.hasAttribute('data-img')) return;
   const instance = basicLightbox.create(`
     <img src="${e.target.dataset.img}" width="800" height="600">
 `);
   instance.show();
-});
+}
+//----
+function onIntersection() {
+  const observer = new IntersectionObserver(
+    (entries, observer) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          onLoadMore();
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.75 },
+  );
+  const allLi = document.querySelectorAll('.gallery-item');
+  const lastLi = allLi[allLi.length - 1];
+
+  observer.observe(lastLi);
+}

@@ -1,7 +1,7 @@
 import compiledTemplate from '../templates/card.hbs';
 import FetchService from '../scripts/fetch-service';
 const basicLightbox = require('basiclightbox');
-const { info, defaults } = require('@pnotify/core');
+const { info, error, defaults } = require('@pnotify/core');
 defaults.delay = 2000;
 
 const refs = {
@@ -25,10 +25,17 @@ function onSubmit(e) {
       const string = data.hits.map(compiledTemplate).join('');
       refs.ul.innerHTML = string;
       onLoadImgs();
+      if (data.totalHits == 0) {
+        error({
+          text: 'Bad request',
+        });
+        return;
+      }
       if (data.totalHits <= dataPerRequest) {
         info({
           text: 'All content is loaded',
         });
+        return;
       }
     } catch (error) {
       console.log(error);
@@ -45,6 +52,7 @@ async function onLoadMore() {
       info({
         text: 'All content is loaded',
       });
+      return;
     }
   } catch (error) {
     console.log(error);

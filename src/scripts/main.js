@@ -1,108 +1,77 @@
 import compiledTemplate from '../templates/card.hbs';
 import FetchService from '../scripts/fetch-service';
-const basicLightbox = require('basiclightbox');
-const { info, error, defaults } = require('@pnotify/core');
-defaults.delay = 2000;
+import modalService from '../scripts/modal-service';
+import notifyService from '../scripts/notify-service';
 
 const refs = {
   searchForm: document.querySelector('.js-search-form'),
-  ul: document.querySelector('.gallery'),
+  gallery: document.querySelector('.gallery'),
 };
 const fetchService = new FetchService();
 
-const dataPerRequest = 12;
-
 refs.searchForm.addEventListener('submit', onSubmit);
-refs.ul.addEventListener('click', showLargeImg);
+refs.gallery.addEventListener('click', modalService.showLargeImg);
 //--
-function onSubmit(e) {
+async function onSubmit(e) {
   e.preventDefault();
   fetchService.pageNumber = 1;
   fetchService.searchQuery = e.currentTarget.elements.query.value;
-  (async () => {
-    try {
-      const data = await fetchService.fetchData();
-      const string = data.hits.map(compiledTemplate).join('');
-      refs.ul.innerHTML = string;
-      onLoadImgs();
-      if (data.totalHits == 0) {
-        error({
-          text: 'Bad request',
-        });
-        return;
-      }
-      if (data.totalHits <= dataPerRequest) {
-        info({
-          text: 'All content is loaded',
-        });
-        return;
-      }
-    } catch (error) {
-      console.log(error);
+  refs.gallery.innerHTML = '';
+  modalService.onLoadingMsg.show();
+  try {
+    const { hits, totalHits } = await fetchService.fetchData();
+    renderElements(hits);
+
+    if (totalHits == 0) {
+      notifyService('error', 'Bad request');
+      return;
     }
-  })();
+    if (totalHits <= fetchService.perPage) {
+      notifyService('info', 'All content is loaded');
+      return;
+    }
+    setObserveItem();
+  } catch (error) {
+    console.warn('fetch error: ', { error });
+  }
 }
 
 async function onLoadMore() {
+  modalService.onLoadingMsg.show();
   try {
-    const data = await fetchService.nextDataDozen();
-    renderElements(data.hits);
-    onLoadImgs();
-    if (fetchService.currentCount >= data.totalHits) {
-      info({
-        text: 'All content is loaded',
-      });
+    const { hits, totalHits } = await fetchService.nextDataPortion();
+    renderElements(hits);
+    if (fetchService.currentCount >= totalHits) {
+      notifyService('info', 'All content is loaded');
       return;
     }
+    setObserveItem();
   } catch (error) {
-    console.log(error);
-  }
-}
-
-function onLoadImgs() {
-  let imgs = document.querySelectorAll('img');
-  if (!imgs.length) return;
-  let dist = imgs.length - dataPerRequest;
-  let counter = 0;
-  for (let i = dist >= 0 ? dist : 0; imgs.length > i; i += 1) {
-    imgs[i].addEventListener('load', onStartInresect);
-    imgs[i].addEventListener('error', onStartInresect);
-  }
-  function onStartInresect() {
-    counter += 1;
-    if (counter == dataPerRequest) {
-      onIntersection();
-    }
+    console.warn('fetch error: ', { error });
   }
 }
 
 function renderElements(data) {
   const string = data.map(compiledTemplate).join('');
-  refs.ul.insertAdjacentHTML('beforeend', string);
+  refs.gallery.insertAdjacentHTML('beforeend', string);
+  modalService.onLoadingMsg.close();
 }
 
-function showLargeImg(e) {
-  if (!e.target.hasAttribute('data-img')) return;
-  const instance = basicLightbox.create(`
-    <img src="${e.target.dataset.img}" width="800" height="600">
-`);
-  instance.show();
-}
 //----
-function onIntersection() {
-  const observer = new IntersectionObserver(
-    (entries, observer) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          onLoadMore();
-          observer.unobserve(entry.target);
-        }
-      });
-    },
-    { threshold: 0.75 },
-  );
-  const allLi = document.querySelectorAll('.gallery-item');
-  const lastLi = allLi[allLi.length - 1];
+const observerItem = new IntersectionObserver(
+  (entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        onLoadMore();
+        observer.unobserve(entry.target);
+      }
+    });
+  },
+  { threshold: 0.75 },
+);
 
-  observer.observe(lastLi);
+function setObserveItem() {
+  const allGalleryItem = document.querySelectorAll('.gallery-item');
+  const lastGalleryItem = allGalleryItem[allGalleryItem.length - 1];
+  observerItem.observe(lastGalleryItem);
 }

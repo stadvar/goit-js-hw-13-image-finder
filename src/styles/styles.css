@@ -76,3 +76,11 @@ img {
   align-items: center;
   margin: 4px;
 }
+.loading {
+  color: white;
+  font-size: 18px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  font-weight: 500;
+}
